@@ -1,0 +1,991 @@
+<!DOCTYPE html>
+<html lang="ko">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sweet Ledger Pro — 부부 통합 가계부 & 자산 대시보드</title>
+  <!-- Chart.js CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <!-- SheetJS (엑셀 다운로드용) -->
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <!-- 다크 모드 스타일시트 -->
+  <link rel="stylesheet" href="css/style.css">
+</head>
+
+<body>
+  <div class="app-shell">
+
+    <!-- ===================================================
+         좌측 사이드바 (공유 이미지 스타일: 왼쪽 상단 카테고리 배치)
+         =================================================== -->
+    <aside class="sidebar">
+      <div class="brand-header">
+        <div class="brand-title">
+          <span class="brand-dots">
+            <span></span><span></span><span></span>
+          </span>
+          <span>Sweet Ledger</span>
+          <span style="color:var(--text-muted); font-size:0.8rem;">▾</span>
+        </div>
+        <span class="brand-badge">PRO</span>
+      </div>
+
+      <!-- 글로벌 기준 년/월 선택기 -->
+      <div class="sidebar-date-box">
+        <div class="sidebar-date-label">
+          <span>TARGET PERIOD</span>
+          <span id="sidebarPeriodText" style="color:var(--accent-orange-light);">2026.11</span>
+        </div>
+        <div class="sidebar-date-controls">
+          <button type="button" id="btnPrevMonth" class="btn-month-step" title="이전 달">‹</button>
+          <select id="selectYear" class="select-dark"></select>
+          <select id="selectMonth" class="select-dark"></select>
+          <button type="button" id="btnNextMonth" class="btn-month-step" title="다음 달">›</button>
+        </div>
+      </div>
+
+      <!-- 왼쪽 상단 4대 핵심 카테고리 네비게이션 -->
+      <div class="nav-section-title">CATEGORIES</div>
+      <ul class="nav-list" id="sidebarNav">
+        <li class="nav-item active" data-view="overview">
+          <div class="nav-item-left">
+            <span class="nav-icon">📊</span>
+            <span>전체 현황</span>
+          </div>
+        </li>
+        <li class="nav-item" data-view="ledger">
+          <div class="nav-item-left">
+            <span class="nav-icon">✍️</span>
+            <span>가계부 작성</span>
+          </div>
+        </li>
+        <li class="nav-item" data-view="stocks">
+          <div class="nav-item-left">
+            <span class="nav-icon">📈</span>
+            <span>주식 현황</span>
+          </div>
+        </li>
+        <li class="nav-item" data-view="assets">
+          <div class="nav-item-left">
+            <span class="nav-icon">🏦</span>
+            <span>자산 현황</span>
+          </div>
+        </li>
+      </ul>
+
+      <!-- 사이드바 중하단: 부부 요약 스냅샷 (레퍼런스의 FAVORITES 스타일) -->
+      <div class="nav-section-title">PORTFOLIO SNAPSHOT</div>
+      <div class="sidebar-quick-list">
+        <div class="quick-row">
+          <div class="quick-left">
+            <span class="dot-indicator husband"></span>
+            <span>남편 당월 지출</span>
+          </div>
+          <span class="quick-val" id="sideHusbandExp">0원</span>
+        </div>
+        <div class="quick-row">
+          <div class="quick-left">
+            <span class="dot-indicator wife"></span>
+            <span>아내 당월 지출</span>
+          </div>
+          <span class="quick-val" id="sideWifeExp">0원</span>
+        </div>
+        <div class="quick-row">
+          <div class="quick-left">
+            <span class="dot-indicator stock"></span>
+            <span>주식 평가총액</span>
+          </div>
+          <span class="quick-val" id="sideStockTotal">0원</span>
+        </div>
+        <div class="quick-row">
+          <div class="quick-left">
+            <span class="dot-indicator asset"></span>
+            <span>금융·실물 자산</span>
+          </div>
+          <span class="quick-val" id="sideAssetTotal">0원</span>
+        </div>
+      </div>
+
+      <!-- 사이드바 하단: 저장 및 엑셀 다운로드 -->
+      <div class="sidebar-footer">
+        <button type="button" id="btnSaveDataSide" class="btn-sidebar-action">
+          <span>💾</span>
+          <span>데이터 저장 / 백업</span>
+        </button>
+        <button type="button" id="btnExportExcelSide" class="btn-sidebar-action excel">
+          <span>📊</span>
+          <span>통합 엑셀 다운로드</span>
+        </button>
+      </div>
+    </aside>
+
+    <!-- ===================================================
+         우측 메인 대시보드 영역
+         =================================================== -->
+    <main class="main-area">
+
+      <!-- 상단 타이틀 바 -->
+      <header class="topbar">
+        <div class="topbar-left">
+          <h1 class="page-title" id="topPageTitle">전체 현황</h1>
+          <span class="page-subtitle" id="topPageSubtitle">2026년 11월 통합 리포트</span>
+        </div>
+        <div class="topbar-right">
+          <button type="button" id="btnToday" class="btn-top">오늘 기준</button>
+        </div>
+      </header>
+
+      <!-- ===================================================
+           [카테고리 1] 전체 현황 (Overview)
+           =================================================== -->
+      <section id="view-overview" class="view-page active">
+
+        <!-- 상단 3열 KPI 카드 (해당 월 수입량, 지출량, 순저축 & 전월 대비 증감 비율) -->
+        <div class="kpi-strip">
+          <!-- 1. 당월 수입량 -->
+          <div class="kpi-cell">
+            <div>
+              <div class="kpi-label">
+                <span>해당 월 총 수입량 (Monthly Income)</span>
+                <span>💰</span>
+              </div>
+              <div class="kpi-value" id="ovTotalIncome">0원</div>
+              <div class="kpi-Split-vertical">
+                <div class="kpi-split-line">
+                  <span>🙋‍♂️ 남편 수입</span>
+                  <b id="ovHusbandIncome">0원</b>
+                </div>
+                <div class="kpi-split-line">
+                  <span>🙋‍♀️ 아내 수입</span>
+                  <b id="ovWifeIncome">0원</b>
+                </div>
+              </div>
+            </div>
+            <div class="delta-row">
+              <span id="ovIncomeDelta" class="delta-badge up">+0.0% ↑</span>
+              <span class="delta-vs">vs Last Month (전월 대비)</span>
+            </div>
+          </div>
+
+          <!-- 2. 당월 지출량 (고정 이월 포함) -->
+          <div class="kpi-cell">
+            <div>
+              <div class="kpi-label">
+                <span>해당 월 총 지출량 (Monthly Expense)</span>
+                <span>💸</span>
+              </div>
+              <div class="kpi-value" id="ovTotalExpense">0원</div>
+              <div class="kpi-Split-vertical">
+                <div class="kpi-split-line">
+                  <span>🙋‍♂️ 남편 지출 (고정포함)</span>
+                  <b id="ovHusbandExpense">0원</b>
+                </div>
+                <div class="kpi-split-line">
+                  <span>🙋‍♀️ 아내 지출 (고정포함)</span>
+                  <b id="ovWifeExpense">0원</b>
+                </div>
+              </div>
+            </div>
+            <div class="delta-row">
+              <span id="ovExpenseDelta" class="delta-badge down">+0.0% ↑</span>
+              <span class="delta-vs">vs Last Month (전월 대비)</span>
+            </div>
+          </div>
+
+          <!-- 3. 당월 순수익(잔액) 및 저축률 -->
+          <div class="kpi-cell">
+            <div>
+              <div class="kpi-label">
+                <span>당월 순 잔액 & 저축 (Net Cashflow)</span>
+                <span>🌱</span>
+              </div>
+              <div class="kpi-value" id="ovNetBalance">0원</div>
+              <div class="kpi-Split-vertical">
+                <div class="kpi-split-line">
+                  <span>🏦 당월 저축 카테고리</span>
+                  <b id="ovMonthlySavings">0원</b>
+                </div>
+                <div class="kpi-split-line">
+                  <span>📌 고정비용 자동이월 합계</span>
+                  <b id="ovFixedTotal">0원</b>
+                </div>
+              </div>
+            </div>
+            <div class="delta-row">
+              <span id="ovBalanceDelta" class="delta-badge up">+0.0% ↑</span>
+              <span class="delta-vs">vs Last Month (전월 대비)</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 하단 메인: 1년간 전체 자산 증감 비율 (Sales Revenue 스타일 완벽 구현) -->
+        <div class="revenue-card">
+          <div class="revenue-header">
+            <div class="revenue-title-group">
+              <div class="rev-label">Total Net Worth — 1년간 전체 자산 현황 (가계부 누적저축 + 주식 현황 + 금융·실물 자산 합산)</div>
+              <div class="rev-amount" id="ovTotalNetWorth">0원</div>
+              <div class="delta-row">
+                <span id="ovNetWorthDelta" class="delta-badge up">+0.0% ↑</span>
+                <span class="delta-vs">vs Last Month (전월 대비 전체 자산 증감률)</span>
+              </div>
+            </div>
+
+            <!-- 우측 상단 3m / 6m / 1y 성장률 박스 -->
+            <div class="growth-pills-group">
+              <div class="growth-pill-box">
+                <div class="growth-pill-label">3m growth (3개월)</div>
+                <div class="growth-pill-val delta-badge up" id="ovGrowth3m">+0.0% ↑</div>
+              </div>
+              <div class="growth-pill-box">
+                <div class="growth-pill-label">6m growth (6개월)</div>
+                <div class="growth-pill-val delta-badge up" id="ovGrowth6m">+0.0% ↑</div>
+              </div>
+              <div class="growth-pill-box">
+                <div class="growth-pill-label">1y growth (연간)</div>
+                <div class="growth-pill-val delta-badge up" id="ovGrowth1y">+0.0% ↑</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 1월(JAN) ~ 12월(DEC) 알약 기둥 그래프 -->
+          <div class="pill-bars-container" id="netWorthPillBars">
+            <!-- JS에서 1월~12월 동적 렌더링 -->
+          </div>
+        </div>
+
+        <!-- 전체 현황 하단: 좌측 자산 구성 바 + 우측 기존 3종 세분화 도넛 차트 -->
+        <div class="bottom-split-grid">
+          <!-- 좌측: Leads by Status 스타일의 자산 구성 비중 -->
+          <div class="dark-card">
+            <div class="dark-card-header">
+              <h3 class="dark-card-title">📊 전체 자산 포트폴리오 비중</h3>
+              <span style="font-family:var(--font-mono); font-size:0.76rem; color:var(--text-muted);">ASSET BREAKDOWN</span>
+            </div>
+            <div style="margin-bottom:20px;">
+              <span style="font-family:var(--font-mono); font-size:1.5rem; font-weight:800;" id="ovBreakdownTotal">0원</span>
+              <span style="font-size:0.8rem; color:var(--text-muted); margin-left:6px;">in Total Assets</span>
+            </div>
+            <div class="status-bars-list" id="assetBreakdownBars">
+              <!-- 동적 렌더링 -->
+            </div>
+          </div>
+
+          <!-- 우측: 기존 3종 세분화 도넛 차트 -->
+          <div class="dark-card">
+            <div class="dark-card-header">
+              <h3 class="dark-card-title">🍩 해당 월 수입 · 지출 세분화 비율</h3>
+              <span style="font-family:var(--font-mono); font-size:0.76rem; color:var(--text-muted);">CATEGORY RATIO</span>
+            </div>
+            <div class="donut-grid-3">
+              <div class="donut-cell">
+                <div class="donut-cell-title">수입 vs 지출 비율</div>
+                <div class="donut-canvas-box">
+                  <canvas id="chartRatio"></canvas>
+                  <div class="donut-center-info">
+                    <div class="donut-center-sub">순잔액</div>
+                    <div class="donut-center-num" id="ratioCenterValue">0</div>
+                  </div>
+                </div>
+              </div>
+              <div class="donut-cell">
+                <div class="donut-cell-title">수입 세분화 비율</div>
+                <div class="donut-canvas-box">
+                  <canvas id="chartIncomeCategory"></canvas>
+                  <div class="donut-center-info">
+                    <div class="donut-center-sub">총 수입</div>
+                    <div class="donut-center-num" id="incomeCenterValue">0</div>
+                  </div>
+                </div>
+              </div>
+              <div class="donut-cell">
+                <div class="donut-cell-title">지출 세분화 비율</div>
+                <div class="donut-canvas-box">
+                  <canvas id="chartExpenseCategory"></canvas>
+                  <div class="donut-center-info">
+                    <div class="donut-center-sub">총 지출</div>
+                    <div class="donut-center-num" id="expenseCenterValue">0</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ===================================================
+           [카테고리 2] 가계부 작성 (남편/아내 분리 & 고정 비용 이월)
+           =================================================== -->
+      <section id="view-ledger" class="view-page">
+
+        <!-- 상단 작성 기준 년/월 선택 바 -->
+        <div class="dark-card" style="margin-bottom:22px; padding:16px 24px; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:14px;">
+          <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+            <span style="font-weight:800; color:var(--accent-orange-light);">📅 작성 기준 년/월 선택:</span>
+            <select id="ledgerSelectYear" class="select-dark" style="width:110px;"></select>
+            <select id="ledgerSelectMonth" class="select-dark" style="width:90px;"></select>
+            <span class="dblclick-hint">💡 내역 더블클릭 시 수정 / 행을 끌어서 고정비용 이동</span>
+          </div>
+          <div style="display:flex; gap:20px; font-family:var(--font-mono); font-size:0.88rem;">
+            <span>부부 총 수입: <b id="ledgerTopIncome" style="color:var(--up-green);">0원</b></span>
+            <span>부부 총 지출(고정포함): <b id="ledgerTopExpense" style="color:var(--down-red);">0원</b></span>
+            <span>당월 잔액: <b id="ledgerTopBalance" style="color:var(--text-primary);">0원</b></span>
+          </div>
+        </div>
+
+        <!-- 좌측 남편 / 우측 아내 분리 입력 및 내역 -->
+        <div class="couple-ledger-grid">
+
+          <!-- 좌측: 남편 가계부 (기입란 길이와 표 컬럼 길이 1:1 완벽 일치) -->
+          <div class="person-panel husband-panel drop-zone-panel" id="dropZoneHusband" data-drop-person="남편">
+            <div class="panel-header">
+              <div class="panel-person-title">
+                <span>🙋‍♂️ 남편 가계부 작성</span>
+                <span class="tag-badge husband">HUSBAND</span>
+              </div>
+              <div class="panel-stats">
+                <span style="color:var(--up-green);">수입 <b id="husbandPanelInc">0원</b></span>
+                <span style="color:var(--down-red);">지출 <b id="husbandPanelExp">0원</b></span>
+              </div>
+            </div>
+
+            <form id="formHusbandTx">
+              <div class="table-scroll">
+                <table class="dark-table ledger-aligned-table">
+                  <colgroup>
+                    <col style="width: 105px;">
+                    <col style="width: 96px;">
+                    <col style="width: auto;">
+                    <col style="width: 125px;">
+                    <col style="width: 78px;">
+                  </colgroup>
+                  <thead>
+                    <!-- 상단 기입란 행 (아래 표 컬럼과 길이·위치 100% 일치) -->
+                    <tr class="asset-input-row">
+                      <td>
+                        <select id="husbandType" class="select-dark">
+                          <option value="income">➕ 수입</option>
+                          <option value="expense" selected>➖ 지출</option>
+                        </select>
+                      </td>
+                      <td>
+                        <select id="husbandCategory" class="select-dark"></select>
+                      </td>
+                      <td>
+                        <input type="text" id="husbandMemo" class="input-dark" placeholder="내용 메모 (예: 급여, 식비)">
+                      </td>
+                      <td>
+                        <input type="text" id="husbandAmount" class="input-dark money-input" style="text-align:right;" placeholder="금액 (원)" required autocomplete="off">
+                      </td>
+                      <td style="text-align:center;">
+                        <button type="submit" class="btn-primary-orange" style="width:100%; padding:8px 0;">➕ 등록</button>
+                      </td>
+                    </tr>
+                    <!-- 표 컬럼 헤더 행 -->
+                    <tr>
+                      <th>구분</th>
+                      <th>카테고리</th>
+                      <th>내용</th>
+                      <th style="text-align:right;">금액</th>
+                      <th style="text-align:center;">삭제</th>
+                    </tr>
+                  </thead>
+                  <tbody id="husbandTxBody"></tbody>
+                </table>
+              </div>
+            </form>
+          </div>
+
+          <!-- 우측: 아내 가계부 (기입란 길이와 표 컬럼 길이 1:1 완벽 일치) -->
+          <div class="person-panel wife-panel drop-zone-panel" id="dropZoneWife" data-drop-person="아내">
+            <div class="panel-header">
+              <div class="panel-person-title">
+                <span>🙋‍♀️ 아내 가계부 작성</span>
+                <span class="tag-badge wife">WIFE</span>
+              </div>
+              <div class="panel-stats">
+                <span style="color:var(--up-green);">수입 <b id="wifePanelInc">0원</b></span>
+                <span style="color:var(--down-red);">지출 <b id="wifePanelExp">0원</b></span>
+              </div>
+            </div>
+
+            <form id="formWifeTx">
+              <div class="table-scroll">
+                <table class="dark-table ledger-aligned-table">
+                  <colgroup>
+                    <col style="width: 105px;">
+                    <col style="width: 96px;">
+                    <col style="width: auto;">
+                    <col style="width: 125px;">
+                    <col style="width: 78px;">
+                  </colgroup>
+                  <thead>
+                    <!-- 상단 기입란 행 (아래 표 컬럼과 길이·위치 100% 일치) -->
+                    <tr class="asset-input-row">
+                      <td>
+                        <select id="wifeType" class="select-dark">
+                          <option value="income">➕ 수입</option>
+                          <option value="expense" selected>➖ 지출</option>
+                        </select>
+                      </td>
+                      <td>
+                        <select id="wifeCategory" class="select-dark"></select>
+                      </td>
+                      <td>
+                        <input type="text" id="wifeMemo" class="input-dark" placeholder="내용 메모 (예: 급여, 장보기)">
+                      </td>
+                      <td>
+                        <input type="text" id="wifeAmount" class="input-dark money-input" style="text-align:right;" placeholder="금액 (원)" required autocomplete="off">
+                      </td>
+                      <td style="text-align:center;">
+                        <button type="submit" class="btn-primary-orange" style="width:100%; padding:8px 0;">➕ 등록</button>
+                      </td>
+                    </tr>
+                    <!-- 표 컬럼 헤더 행 -->
+                    <tr>
+                      <th>구분</th>
+                      <th>카테고리</th>
+                      <th>내용</th>
+                      <th style="text-align:right;">금액</th>
+                      <th style="text-align:center;">삭제</th>
+                    </tr>
+                  </thead>
+                  <tbody id="wifeTxBody"></tbody>
+                </table>
+              </div>
+            </form>
+          </div>
+
+        </div>
+
+        <!-- 하단: 월별 고정 비용 관리 (불필요한 추가 입력 열 제거 & 드래그 앤 드롭 지원) -->
+        <div class="dark-card drop-zone-panel" id="dropZoneFixed">
+          <div class="dark-card-header">
+            <div>
+              <h3 class="dark-card-title">
+                <span>📌 월별 고정 비용 관리 (다음 달 자동 이월)</span>
+                <span class="dblclick-hint">💡 행을 위·아래로 끌어다 놓아 고정/일반 전환</span>
+              </h3>
+              <p style="font-size:0.8rem; color:var(--text-muted); margin-top:4px;">
+                위쪽 가계부 내역을 <b>마우스로 끌어서 이곳에 놓으면</b> 고정 항목으로 등록됩니다. 특정 월에 금액을 더블클릭해 수정하면 <b>이전 달까지는 기존 금액이 보존되고 수정한 달부터 새 금액이 적용</b>됩니다.
+              </p>
+            </div>
+            <span class="tag-badge carry" id="fixedTotalBadge">고정지출 합계: 0원</span>
+          </div>
+
+          <div class="table-scroll">
+            <table class="dark-table">
+              <thead>
+                <tr>
+                  <th>담당</th>
+                  <th>구분</th>
+                  <th>카테고리</th>
+                  <th>고정 항목명</th>
+                  <th>시작 ~ 종료 기간</th>
+                  <th>이월 상태</th>
+                  <th style="text-align:right;">월 고정 금액</th>
+                  <th style="width:120px; text-align:center;">관리</th>
+                </tr>
+              </thead>
+              <tbody id="fixedExpenseBody"></tbody>
+            </table>
+          </div>
+        </div>
+
+      </section>
+
+      <!-- ===================================================
+           [카테고리 3] 주식 현황 (월말 보유금액/수량 & 전월 대비 비율 & 연간 꺾은선)
+           =================================================== -->
+      <section id="view-stocks" class="view-page">
+
+        <!-- 상단 작성 기준 년/월 선택 바 (가계부 작성 페이지와 동일 구조) -->
+        <div class="dark-card" style="margin-bottom:22px; padding:16px 24px; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:14px;">
+          <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+            <span style="font-weight:800; color:var(--accent-orange-light);">📅 작성 기준 년/월 선택:</span>
+            <select id="stockSelectYear" class="select-dark" style="width:110px;"></select>
+            <select id="stockSelectMonth" class="select-dark" style="width:90px;"></select>
+            <span class="dblclick-hint">💡 행 더블클릭 시 즉시 수정</span>
+          </div>
+          <div style="display:flex; gap:20px; font-family:var(--font-mono); font-size:0.88rem;">
+            <span>남편 보유총액: <b id="stkTopHusband" style="color:var(--husband-blue);">0원</b></span>
+            <span>아내 보유총액: <b id="stkTopWife" style="color:var(--wife-pink);">0원</b></span>
+            <span>월말 총 평가금액: <b id="stkTopTotal" style="color:var(--accent-orange-light);">0원</b></span>
+          </div>
+        </div>
+
+        <!-- 상단 주식 KPI 요약 -->
+        <div class="kpi-strip">
+          <div class="kpi-cell">
+            <div class="kpi-label">
+              <span>해당 월말 주식 총 평가금액</span>
+              <span>📈</span>
+            </div>
+            <div class="kpi-value" id="stkTotalValue">0원</div>
+            <div class="delta-row">
+              <span id="stkMomDelta" class="delta-badge up">+0.0% ↑</span>
+              <span class="delta-vs">vs Last Month (전월 말 대비 증감률)</span>
+            </div>
+          </div>
+
+          <div class="kpi-cell">
+            <div class="kpi-label">
+              <span>🙋‍♂️ 남편 주식 보유 총액</span>
+              <span class="tag-badge husband">HUSBAND</span>
+            </div>
+            <div class="kpi-value" id="stkHusbandTotal" style="color:var(--husband-blue);">0원</div>
+            <div class="delta-row">
+              <span class="delta-vs" id="stkLastDayLabel">기준일: 2026-11-30 (월말 기준)</span>
+            </div>
+          </div>
+
+          <div class="kpi-cell">
+            <div class="kpi-label">
+              <span>🙋‍♀️ 아내 주식 보유 총액</span>
+              <span class="tag-badge wife">WIFE</span>
+            </div>
+            <div class="kpi-value" id="stkWifeTotal" style="color:var(--wife-pink);">0원</div>
+            <div class="delta-row">
+              <span class="delta-vs">남편 + 아내 합산 실시간 반영</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 연간(1~12월) 주식 총 보유 금액 꺾은선 그래프 -->
+        <div class="dark-card" style="margin-bottom:24px;">
+          <div class="dark-card-header">
+            <div>
+              <h3 class="dark-card-title">📈 <span id="stkChartYear">2026</span>년 월별 주식 총 보유 금액 추이 (1년 단위 꺾은선 그래프)</h3>
+              <p style="font-size:0.8rem; color:var(--text-muted); margin-top:4px;">
+                매월 마지막 날 기준 등록된 남편과 아내의 주식 총 보유 금액과 전월 대비 증감 흐름입니다.
+              </p>
+            </div>
+          </div>
+          <div class="line-chart-container">
+            <canvas id="chartStockLine"></canvas>
+          </div>
+        </div>
+
+        <!-- 매월 마지막날 기준 주식 현황 등록 & 전월 대비 비율 테이블 -->
+        <div class="dark-card">
+          <div class="dark-card-header">
+            <div>
+              <h3 class="dark-card-title">
+                <span>📝 매월 마지막 날 기준 주식 보유 현황 등록 (<span id="stkFormMonthTitle">2026년 11월 말</span>)</span>
+                <span class="dblclick-hint">💡 행 더블클릭 시 수정</span>
+              </h3>
+              <p style="font-size:0.8rem; color:var(--text-muted); margin-top:4px;">
+                동일 종목이 전월에 등록되어 있으면 전월 평가금액 대비 증감 비율(%)이 자동으로 계산됩니다.
+              </p>
+            </div>
+            <button type="button" id="btnCopyPrevStocks" class="btn-top" style="border-color:var(--accent-orange); color:var(--accent-orange-light);">
+              🔄 전월 보유 종목 불러오기
+            </button>
+          </div>
+
+          <form id="formStock">
+            <div class="table-scroll">
+              <table class="dark-table asset-aligned-table">
+                <colgroup>
+                  <col style="width: 112px;">
+                  <col style="width: 96px;">
+                  <col style="width: 18%;">
+                  <col style="width: 115px;">
+                  <col style="width: 135px;">
+                  <col style="width: 145px;">
+                  <col style="width: 115px;">
+                  <col style="width: auto;">
+                  <col style="width: 82px;">
+                </colgroup>
+                <thead>
+                  <!-- 상단 기입란 행 (아래 표 컬럼과 길이·위치 100% 일치) -->
+                  <tr class="asset-input-row">
+                    <td style="font-family:var(--font-mono); font-size:0.8rem; color:var(--accent-orange-light); text-align:center;" id="stkInputDateCell">
+                      2026-05-31
+                    </td>
+                    <td>
+                      <select id="stkPerson" class="select-dark">
+                        <option value="남편">🙋‍♂️ 남편</option>
+                        <option value="아내">🙋‍♀️ 아내</option>
+                      </select>
+                    </td>
+                    <td>
+                      <input type="text" id="stkName" class="input-dark" placeholder="종목명 (예: 삼성전자)" required>
+                    </td>
+                    <td>
+                      <input type="text" id="stkQty" class="input-dark money-input" style="text-align:right;" placeholder="보유 수량(주)" required autocomplete="off">
+                    </td>
+                    <td style="text-align:right; font-size:0.76rem; color:var(--text-muted); padding-right:10px;">
+                      전월 자동비교
+                    </td>
+                    <td>
+                      <input type="text" id="stkValue" class="input-dark money-input" style="text-align:right;" placeholder="월말 평가금액(원)" required autocomplete="off">
+                    </td>
+                    <td style="text-align:right; font-size:0.76rem; color:var(--text-muted); padding-right:10px;">
+                      비율 자동계산
+                    </td>
+                    <td>
+                      <input type="text" id="stkMemo" class="input-dark" placeholder="비고 (선택)">
+                    </td>
+                    <td style="text-align:center;">
+                      <button type="submit" class="btn-primary-orange" style="width:100%; padding:9px 0;">➕ 등록</button>
+                    </td>
+                  </tr>
+                  <!-- 표 컬럼 헤더 행 -->
+                  <tr>
+                    <th>기준일 (월말)</th>
+                    <th>명의</th>
+                    <th>종목명</th>
+                    <th style="text-align:right;">보유 수량</th>
+                    <th style="text-align:right;">전월 평가금액</th>
+                    <th style="text-align:right;">당월 말 평가금액</th>
+                    <th style="text-align:right;">전월 대비 비율</th>
+                    <th>비고</th>
+                    <th style="text-align:center;">삭제</th>
+                  </tr>
+                </thead>
+                <tbody id="stockTableBody"></tbody>
+              </table>
+            </div>
+          </form>
+        </div>
+
+      </section>
+
+      <!-- ===================================================
+           [카테고리 4] 자산 현황 (금융 자산 표 & 실물 자산 표)
+           =================================================== -->
+      <section id="view-assets" class="view-page">
+
+        <!-- 상단 작성 기준 년/월 선택 바 (가계부 작성 페이지와 동일 구조) -->
+        <div class="dark-card" style="margin-bottom:22px; padding:16px 24px; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:14px;">
+          <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+            <span style="font-weight:800; color:var(--accent-orange-light);">📅 작성 기준 년/월 선택:</span>
+            <select id="assetSelectYear" class="select-dark" style="width:110px;"></select>
+            <select id="assetSelectMonth" class="select-dark" style="width:90px;"></select>
+            <span class="dblclick-hint">💡 행 더블클릭 시 수정 / 기간 클릭 시 시작·종료 년월 변경</span>
+          </div>
+          <div style="display:flex; gap:20px; font-family:var(--font-mono); font-size:0.88rem;">
+            <span>금융 자산 총액: <b id="astTopFin" style="color:var(--up-green);">0원</b></span>
+            <span>실물 자산 총액: <b id="astTopReal" style="color:var(--accent-orange-light);">0원</b></span>
+            <span>자산 총합계: <b id="astTopCombined" style="color:var(--text-primary);">0원</b></span>
+          </div>
+        </div>
+
+        <!-- 상단 자산 KPI 요약 -->
+        <div class="kpi-strip">
+          <div class="kpi-cell">
+            <div class="kpi-label">
+              <span>금융 + 실물 자산 총합계</span>
+              <span>🏛️</span>
+            </div>
+            <div class="kpi-value" id="astCombinedTotal">0원</div>
+            <div class="delta-row">
+              <span class="delta-vs">전체 현황의 연간 자산 그래프에 자동 합산</span>
+            </div>
+          </div>
+
+          <div class="kpi-cell">
+            <div class="kpi-label">
+              <span>🏦 금융 자산 총액 (예금 · 적금 등)</span>
+              <span class="tag-badge income">FINANCIAL</span>
+            </div>
+            <div class="kpi-value" id="astFinTotal" style="color:var(--up-green);">0원</div>
+            <div class="delta-row">
+              <span class="delta-vs" id="astFinSub">저축 원금/월납입 합계: 0원</span>
+            </div>
+          </div>
+
+          <div class="kpi-cell">
+            <div class="kpi-label">
+              <span>🏠 실물 자산 총액 (부동산 · 차량 등)</span>
+              <span class="tag-badge carry">REAL ASSETS</span>
+            </div>
+            <div class="kpi-value" id="astRealTotal" style="color:var(--accent-orange-light);">0원</div>
+            <div class="delta-row">
+              <span class="delta-vs" id="astRealSub">매입 원금 합계: 0원</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 1. 금융 자산 표 (입력란 길이와 표 컬럼 길이 1:1 완벽 일치) -->
+        <div class="dark-card" style="margin-bottom:24px;">
+          <div class="dark-card-header">
+            <div>
+              <h3 class="dark-card-title">
+                <span>🏦 금융 자산 현황 (예금 · 적금 · 청약 · CMA)</span>
+                <span class="dblclick-hint">💡 행 더블클릭 시 수정</span>
+              </h3>
+              <p style="font-size:0.8rem; color:var(--text-muted); margin-top:4px;">
+                적금·청약은 매달 입금되므로 <b>매월 저축한 금액을 기준으로 해당 월까지의 누적 총 금액이 자동 계산</b>됩니다.
+              </p>
+            </div>
+          </div>
+
+          <form id="formFinAsset">
+            <div class="table-scroll">
+              <table class="dark-table asset-aligned-table">
+                <colgroup>
+                  <col style="width: 96px;">
+                  <col style="width: 100px;">
+                  <col style="width: 21%;">
+                  <col style="width: 165px;">
+                  <col style="width: 105px;">
+                  <col style="width: 16%;">
+                  <col style="width: 18%;">
+                  <col style="width: 82px;">
+                </colgroup>
+                <thead>
+                  <!-- 상단 기입란 행 (아래 표 컬럼과 가로 길이 100% 일치) -->
+                  <tr class="asset-input-row">
+                    <td>
+                      <select id="finPerson" class="select-dark">
+                        <option value="공동">👫 공동</option>
+                        <option value="남편">🙋‍♂️ 남편</option>
+                        <option value="아내">🙋‍♀️ 아내</option>
+                      </select>
+                    </td>
+                    <td>
+                      <select id="finType" class="select-dark">
+                        <option value="적금">적금</option>
+                        <option value="예금">예금</option>
+                        <option value="청약">청약</option>
+                        <option value="CMA">CMA</option>
+                        <option value="기타">기타</option>
+                      </select>
+                    </td>
+                    <td>
+                      <input type="text" id="finName" class="input-dark" placeholder="상품명 / 금융기관" required>
+                    </td>
+                    <td>
+                      <button type="button" id="btnFinPeriodPicker" class="btn-top" style="width:100%; justify-content:center; padding:8px 6px; border-color:var(--border-light);" title="클릭하여 시작 ~ 종료 년/월 지정">
+                        📅 <span id="finPeriodBtnText">2026.05 ~ 계속</span> ▾
+                      </button>
+                    </td>
+                    <td>
+                      <input type="number" step="0.01" id="finRate" class="input-dark" style="text-align:right;" placeholder="금리(%)" required>
+                    </td>
+                    <td>
+                      <input type="text" id="finSavingsAmt" class="input-dark money-input" style="text-align:right;" placeholder="월 저축 금액" required autocomplete="off">
+                    </td>
+                    <td>
+                      <input type="text" id="finTotalAmt" class="input-dark money-input" style="text-align:right;" placeholder="총 금액(자동)" required autocomplete="off">
+                    </td>
+                    <td style="text-align:center;">
+                      <button type="submit" class="btn-primary-orange" style="width:100%; padding:9px 0;">➕ 등록</button>
+                    </td>
+                  </tr>
+                  <!-- 표 컬럼 헤더 행 -->
+                  <tr>
+                    <th>명의</th>
+                    <th>형태 (예금/적금)</th>
+                    <th>상품명 / 기관</th>
+                    <th>기간</th>
+                    <th style="text-align:right;">금리 (%)</th>
+                    <th style="text-align:right;">저축 금액</th>
+                    <th style="text-align:right;">총 금액</th>
+                    <th style="text-align:center;">삭제</th>
+                  </tr>
+                </thead>
+                <tbody id="finAssetBody"></tbody>
+                <tfoot>
+                  <tr>
+                    <td colspan="5">금융 자산 합계</td>
+                    <td style="text-align:right; font-family:var(--font-mono);" id="finFootSavings">0원</td>
+                    <td style="text-align:right; font-family:var(--font-mono); color:var(--up-green);" id="finFootTotal">0원</td>
+                    <td></td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          </form>
+        </div>
+
+        <!-- 2. 실물 자산 표 (입력란 길이와 표 컬럼 길이 1:1 완벽 일치) -->
+        <div class="dark-card">
+          <div class="dark-card-header">
+            <div>
+              <h3 class="dark-card-title">
+                <span>🏠 실물 자산 현황 (부동산 · 자동차 · 귀금속 등)</span>
+                <span class="dblclick-hint">💡 행 더블클릭 시 수정</span>
+              </h3>
+              <p style="font-size:0.8rem; color:var(--text-muted); margin-top:4px;">
+                실물 자산의 형태, 보유기간, 변동률(%), 매입금액, 현재 총금액을 표 형태로 관리합니다.
+              </p>
+            </div>
+          </div>
+
+          <form id="formRealAsset">
+            <div class="table-scroll">
+              <table class="dark-table asset-aligned-table">
+                <colgroup>
+                  <col style="width: 96px;">
+                  <col style="width: 100px;">
+                  <col style="width: 21%;">
+                  <col style="width: 165px;">
+                  <col style="width: 105px;">
+                  <col style="width: 16%;">
+                  <col style="width: 18%;">
+                  <col style="width: 82px;">
+                </colgroup>
+                <thead>
+                  <!-- 상단 기입란 행 (아래 표 컬럼과 가로 길이 100% 일치) -->
+                  <tr class="asset-input-row">
+                    <td>
+                      <select id="realPerson" class="select-dark">
+                        <option value="공동">👫 공동</option>
+                        <option value="남편">🙋‍♂️ 남편</option>
+                        <option value="아내">🙋‍♀️ 아내</option>
+                      </select>
+                    </td>
+                    <td>
+                      <select id="realType" class="select-dark">
+                        <option value="부동산">부동산</option>
+                        <option value="자동차">자동차</option>
+                        <option value="귀금속/금">귀금속/금</option>
+                        <option value="기타">기타</option>
+                      </select>
+                    </td>
+                    <td>
+                      <input type="text" id="realName" class="input-dark" placeholder="자산명 (예: 아파트 전세, 쏘렌토)" required>
+                    </td>
+                    <td>
+                      <button type="button" id="btnRealPeriodPicker" class="btn-top" style="width:100%; justify-content:center; padding:8px 6px; border-color:var(--border-light);" title="클릭하여 시작 ~ 종료 년/월 지정">
+                        📅 <span id="realPeriodBtnText">2026.05 ~ 계속</span> ▾
+                      </button>
+                    </td>
+                    <td>
+                      <input type="number" step="0.01" id="realRate" class="input-dark" style="text-align:right;" placeholder="변동률(%)" required>
+                    </td>
+                    <td>
+                      <input type="text" id="realPurchaseAmt" class="input-dark money-input" style="text-align:right;" placeholder="매입금액 (원)" required autocomplete="off">
+                    </td>
+                    <td>
+                      <input type="text" id="realTotalAmt" class="input-dark money-input" style="text-align:right;" placeholder="현재 총금액 (원)" required autocomplete="off">
+                    </td>
+                    <td style="text-align:center;">
+                      <button type="submit" class="btn-primary-orange" style="width:100%; padding:9px 0;">➕ 등록</button>
+                    </td>
+                  </tr>
+                  <!-- 표 컬럼 헤더 행 -->
+                  <tr>
+                    <th>명의</th>
+                    <th>형태</th>
+                    <th>자산명</th>
+                    <th>보유기간</th>
+                    <th style="text-align:right;">변동률 (%)</th>
+                    <th style="text-align:right;">매입금액</th>
+                    <th style="text-align:right;">현재 총금액</th>
+                    <th style="text-align:center;">삭제</th>
+                  </tr>
+                </thead>
+                <tbody id="realAssetBody"></tbody>
+                <tfoot>
+                  <tr>
+                    <td colspan="5">실물 자산 합계</td>
+                    <td style="text-align:right; font-family:var(--font-mono);" id="realFootPurchase">0원</td>
+                    <td style="text-align:right; font-family:var(--font-mono); color:var(--accent-orange-light);" id="realFootTotal">0원</td>
+                    <td></td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          </form>
+        </div>
+
+      </section>
+
+    </main>
+  </div>
+
+  <!-- 고정 비용 지정 팝업 모달 -->
+  <div id="fixedConvertModal" class="modal-overlay">
+    <div class="modal-box" style="max-width:460px;">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; padding-bottom:10px; border-bottom:1px solid var(--border-subtle);">
+        <h3 style="font-size:1.08rem; font-weight:800; color:var(--accent-orange-light);">📌 고정 비용으로 지정하시겠습니까?</h3>
+        <button type="button" id="btnCloseFixedModal" style="background:none; border:none; color:var(--text-muted); font-size:1.2rem; cursor:pointer;">✕</button>
+      </div>
+
+      <p style="font-size:0.86rem; color:var(--text-secondary); margin-bottom:14px;">
+        선택한 지출 항목을 <b>고정 이월</b>로 전환하고 하단 <b>[월별 고정 비용 관리]</b> 목록에 등록합니다.
+      </p>
+
+      <!-- 선택한 항목 요약 박스 -->
+      <div id="fixedModalTargetSummary" style="background:var(--bg-input); border:1px solid var(--border-light); padding:12px 14px; border-radius:var(--radius-sm); margin-bottom:18px; font-size:0.86rem;">
+        <!-- 동적 렌더링 -->
+      </div>
+
+      <!-- 시작 년/월 선택 -->
+      <div style="margin-bottom:14px;">
+        <label style="display:block; font-size:0.8rem; font-weight:700; color:var(--text-secondary); margin-bottom:6px;">
+          🟢 시작 년/월 (기본: 해당 월)
+        </label>
+        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:8px;">
+          <select id="fixModalStartYear" class="select-dark"></select>
+          <select id="fixModalStartMonth" class="select-dark"></select>
+        </div>
+      </div>
+
+      <!-- 종료 년/월 선택 (계속 기본 + 년/월 선택 가능) -->
+      <div style="margin-bottom:16px;">
+        <label style="display:block; font-size:0.8rem; font-weight:700; color:var(--text-secondary); margin-bottom:6px;">
+          🟠 종료 시점 (기본: 계속 / 년·월 지정 가능)
+        </label>
+        <div style="display:flex; gap:8px; margin-bottom:8px;">
+          <button type="button" id="btnEndForever" class="btn-top active-mode" style="flex:1; justify-content:center;">
+            🔄 계속 (매월 자동 이월)
+          </button>
+          <button type="button" id="btnEndCustom" class="btn-top" style="flex:1; justify-content:center;">
+            📅 종료 년/월 직접 선택
+          </button>
+        </div>
+        <div id="fixModalEndDateGroup" style="display:none; grid-template-columns: 1fr 1fr; gap:8px;">
+          <select id="fixModalEndYear" class="select-dark"></select>
+          <select id="fixModalEndMonth" class="select-dark"></select>
+        </div>
+      </div>
+
+      <!-- 시작 ~ 종료 미리보기 -->
+      <div style="background:rgba(255, 122, 24, 0.1); border:1px solid rgba(255, 122, 24, 0.3); padding:10px 14px; border-radius:var(--radius-sm); margin-bottom:18px; text-align:center; font-family:var(--font-mono); font-size:0.85rem; color:var(--accent-orange-light); font-weight:700;" id="fixModalPeriodPreview">
+        시작/종료 : 2026.05 ~ 계속
+      </div>
+
+      <div style="display:flex; gap:10px;">
+        <button type="button" id="btnCancelFixedModal" class="btn-top" style="flex:1; justify-content:center;">취소</button>
+        <button type="button" id="btnConfirmFixedModal" class="btn-primary-orange" style="flex:1.4;">📌 고정 비용으로 지정</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 데이터 저장 / 백업 모달 -->
+  <div id="saveModal" class="modal-overlay">
+    <div class="modal-box">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; padding-bottom:10px; border-bottom:1px solid var(--border-subtle);">
+        <h3 style="font-size:1.05rem; font-weight:800;">💾 통합 데이터 저장 및 백업</h3>
+        <button type="button" id="btnCloseSaveModal" style="background:none; border:none; color:var(--text-muted); font-size:1.2rem; cursor:pointer;">✕</button>
+      </div>
+      <p style="font-size:0.88rem; color:var(--text-secondary); margin-bottom:14px;">
+        ✅ 가계부, 고정비용, 주식 현황, 금융/실물 자산의 모든 내역이 현재 브라우저에 실시간 저장되었습니다.
+      </p>
+      <div style="background:var(--bg-input); border:1px solid var(--border-subtle); padding:12px; border-radius:var(--radius-sm); font-size:0.82rem; color:var(--text-muted); margin-bottom:18px;">
+        💡 남편과 데이터를 동기화하려면 <b>[백업 파일 다운로드]</b>로 받은 <code>.json</code> 파일을 전달한 뒤, 남편 기기에서 <b>[백업 파일 불러오기]</b>를 선택하세요.
+      </div>
+      <div style="display:flex; gap:10px;">
+        <button type="button" id="btnExportJSON" class="btn-primary-orange" style="flex:1;">📥 백업 파일 다운로드</button>
+        <button type="button" id="btnImportJSONTrigger" class="btn-top" style="flex:1; justify-content:center;">📤 백업 파일 불러오기</button>
+        <input type="file" id="fileInputJSON" accept=".json" style="display:none;">
+      </div>
+    </div>
+  </div>
+
+  <!-- 토스트 알림 -->
+  <div id="toastMsg" class="toast-msg">✅ 저장되었습니다!</div>
+
+  <!-- 스크립트 (private_seed.js는 로컬 전용이며 GitHub 업로드 시 .gitignore로 제외됨) -->
+  <script src="js/private_seed.js"></script>
+  <script src="js/storage.js"></script>
+  <script src="js/charts.js"></script>
+  <script src="js/app.js"></script>
+</body>
+
+</html>
