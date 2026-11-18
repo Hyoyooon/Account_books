@@ -97,8 +97,24 @@ const Storage = {
     }
   },
 
-  save() {
+  save(skipCloud = false) {
     localStorage.setItem(STORAGE_KEYS.STATE_EXCEL_V6, JSON.stringify(this.state));
+    if (!skipCloud && window.CloudSync && CloudSync.isConnected) {
+      CloudSync.pushState(this.state);
+    }
+  },
+
+  onRemoteUpdate(remoteState, meta = {}) {
+    if (!remoteState) return;
+    this.state = {
+      transactions: Array.isArray(remoteState.transactions) ? remoteState.transactions : [],
+      fixedExpenses: Array.isArray(remoteState.fixedExpenses) ? remoteState.fixedExpenses : [],
+      stocks: Array.isArray(remoteState.stocks) ? remoteState.stocks : [],
+      financialAssets: Array.isArray(remoteState.financialAssets) ? remoteState.financialAssets : [],
+      realAssets: Array.isArray(remoteState.realAssets) ? remoteState.realAssets : []
+    };
+    this.save(true); // 로컬에만 저장하여 클라우드 루프 방지
+    window.dispatchEvent(new CustomEvent('cloudStateSynced', { detail: meta }));
   },
 
   // ===================================================
@@ -869,4 +885,277 @@ const Storage = {
   }
 };
 
+// ===================================================
+// CloudSync: Firebase Firestore 기반 부부 실시간 클라우드 동기화 모듈
+// - 깃허브 코드에는 개인 키/비밀번호가 전혀 남지 않음 (브라우저 localStorage에만 저장)
+// - 가족 방 코드(SHA-256 해시)로 고유 문서 식별
+// ===================================================
+const CloudSync = {
+  db: null,
+  unsubscribe: null,
+  config: null,
+  sessionId: 'sess_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8),
+  pushTimer: null,
+  isConnected: false,
+  lastSyncedAt: null,
+
+  CONFIG_KEY: 'sweet_ledger_cloud_config_v1',
+
+  async init() {
+    this.loadConfig();
+    if (this.config && this.config.apiKey && this.config.projectId && this.config.familyCode) {
+      await this.connect(this.config, false);
+    } else {
+      this.updateStatusUI('offline', '로컬 모드');
+    }
+  },
+
+  loadConfig() {
+    try {
+      const raw = localStorage.getItem(this.CONFIG_KEY);
+      this.config = raw ? JSON.parse(raw) : null;
+    } catch (e) {
+      this.config = null;
+    }
+    return this.config;
+  },
+
+  saveConfig(cfg) {
+    this.config = cfg;
+    localStorage.setItem(this.CONFIG_KEY, JSON.stringify(cfg));
+  },
+
+  clearConfig() {
+    this.disconnect();
+    this.config = null;
+    localStorage.removeItem(this.CONFIG_KEY);
+    this.updateStatusUI('offline', '로컬 모드');
+  },
+
+  async hashFamilyCode(code) {
+    const clean = (code || '').trim().toLowerCase();
+    if (!clean) return 'room_default';
+    try {
+      if (window.crypto && crypto.subtle) {
+        const msgBuffer = new TextEncoder().encode(clean);
+        const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
+        const hashArray = Array.from(new Uint8Array(hashBuffer));
+        return 'room_' + hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+      }
+    } catch (e) {}
+
+    let hash = 0;
+    for (let i = 0; i < clean.length; i++) {
+      hash = ((hash << 5) - hash) + clean.charCodeAt(i);
+      hash |= 0;
+    }
+    return 'room_' + Math.abs(hash);
+  },
+
+  parseFirebaseConfigInput(text) {
+    if (!text || typeof text !== 'string') return null;
+    const cleanText = text.trim();
+
+    try {
+      const json = JSON.parse(cleanText);
+      if (json.apiKey && json.projectId) return json;
+    } catch (e) {}
+
+    const extract = (key) => {
+      const regex = new RegExp(`['"]?${key}['"]?\\s*:\\s*['"]([^'"]+)['"]`, 'i');
+      const match = cleanText.match(regex);
+      return match ? match[1].trim() : '';
+    };
+
+    const apiKey = extract('apiKey');
+    const projectId = extract('projectId');
+    const authDomain = extract('authDomain') || (projectId ? `${projectId}.firebaseapp.com` : '');
+    const storageBucket = extract('storageBucket') || (projectId ? `${projectId}.appspot.com` : '');
+    const messagingSenderId = extract('messagingSenderId');
+    const appId = extract('appId');
+
+    if (apiKey && projectId) {
+      return { apiKey, authDomain, projectId, storageBucket, messagingSenderId, appId };
+    }
+    return null;
+  },
+
+  mergeStates(local, remote) {
+    if (!remote) return local;
+    if (!local) return remote;
+
+    const mergeList = (arr1, arr2) => {
+      const map = new Map();
+      (arr1 || []).forEach(item => { if (item && item.id) map.set(item.id, item); });
+      (arr2 || []).forEach(item => { if (item && item.id && !map.has(item.id)) map.set(item.id, item); });
+      return Array.from(map.values());
+    };
+
+    return {
+      transactions: mergeList(remote.transactions, local.transactions),
+      fixedExpenses: mergeList(remote.fixedExpenses, local.fixedExpenses),
+      stocks: mergeList(remote.stocks, local.stocks),
+      financialAssets: mergeList(remote.financialAssets, local.financialAssets),
+      realAssets: mergeList(remote.realAssets, local.realAssets)
+    };
+  },
+
+  async connect(cfg, shouldSave = true) {
+    if (!window.firebase) {
+      console.warn('Firebase SDK가 로드되지 않았습니다.');
+      this.updateStatusUI('error', 'SDK 미설치');
+      return { success: false, error: 'Firebase 라이브러리가 로드되지 않았습니다. 인터넷 연결을 확인해 주세요.' };
+    }
+
+    try {
+      this.updateStatusUI('connecting', '연결 중...');
+
+      let app;
+      const appName = 'sweetLedgerApp';
+      const existingApp = (firebase.apps || []).find(a => a.name === appName) || (firebase.apps && firebase.apps.length ? firebase.app() : null);
+
+      if (!existingApp) {
+        app = firebase.initializeApp({
+          apiKey: cfg.apiKey,
+          authDomain: cfg.authDomain || `${cfg.projectId}.firebaseapp.com`,
+          projectId: cfg.projectId,
+          storageBucket: cfg.storageBucket || `${cfg.projectId}.appspot.com`,
+          messagingSenderId: cfg.messagingSenderId || '',
+          appId: cfg.appId || ''
+        }, appName);
+      } else {
+        app = existingApp;
+      }
+
+      this.db = firebase.firestore(app);
+      const docId = await this.hashFamilyCode(cfg.familyCode);
+
+      if (shouldSave) {
+        this.saveConfig(cfg);
+      }
+
+      if (this.unsubscribe) {
+        this.unsubscribe();
+        this.unsubscribe = null;
+      }
+
+      const docRef = this.db.collection('sweet_ledgers').doc(docId);
+
+      // 첫 연결 시 데이터 병합 처리
+      const docSnap = await docRef.get();
+      if (!docSnap.exists) {
+        await docRef.set({
+          version: 6,
+          updatedAt: Date.now(),
+          sessionId: this.sessionId,
+          state: Storage.state
+        });
+      } else {
+        const cloudData = docSnap.data();
+        if (cloudData && cloudData.state) {
+          const mergedState = this.mergeStates(Storage.state, cloudData.state);
+          Storage.onRemoteUpdate(mergedState, { initial: true });
+          await docRef.set({
+            version: 6,
+            updatedAt: Date.now(),
+            sessionId: this.sessionId,
+            state: mergedState
+          });
+        }
+      }
+
+      // 실시간 변경 감지 리스너 등록
+      this.unsubscribe = docRef.onSnapshot((snapshot) => {
+        if (!snapshot.exists) return;
+        if (snapshot.metadata && snapshot.metadata.hasPendingWrites) {
+          return;
+        }
+        const data = snapshot.data();
+        if (!data || !data.state) return;
+
+        if (data.sessionId === this.sessionId) return;
+
+        this.lastSyncedAt = new Date();
+        Storage.onRemoteUpdate(data.state, { updatedAt: data.updatedAt });
+        this.updateStatusUI('online', '실시간 동기화됨');
+      }, (error) => {
+        console.error('Firestore onSnapshot error:', error);
+        this.updateStatusUI('error', '동기화 오류');
+      });
+
+      this.isConnected = true;
+      this.lastSyncedAt = new Date();
+      this.updateStatusUI('online', '실시간 동기화됨');
+      return { success: true };
+    } catch (err) {
+      console.error('Firebase connect failed:', err);
+      this.isConnected = false;
+      this.updateStatusUI('error', '연결 실패');
+      return { success: false, error: err.message };
+    }
+  },
+
+  disconnect() {
+    if (this.unsubscribe) {
+      this.unsubscribe();
+      this.unsubscribe = null;
+    }
+    this.isConnected = false;
+    this.updateStatusUI('offline', '로컬 모드');
+  },
+
+  pushState(state) {
+    if (!this.isConnected || !this.db || !this.config) return;
+
+    if (this.pushTimer) {
+      clearTimeout(this.pushTimer);
+    }
+
+    this.pushTimer = setTimeout(async () => {
+      try {
+        const docId = await this.hashFamilyCode(this.config.familyCode);
+        await this.db.collection('sweet_ledgers').doc(docId).set({
+          version: 6,
+          updatedAt: Date.now(),
+          sessionId: this.sessionId,
+          state: state
+        });
+        this.lastSyncedAt = new Date();
+        this.updateStatusUI('online', '실시간 동기화됨');
+      } catch (err) {
+        console.error('Cloud push failed:', err);
+        this.updateStatusUI('error', '저장 오류');
+      }
+    }, 400);
+  },
+
+  updateStatusUI(status, label) {
+    const dots = document.querySelectorAll('.cloud-status-dot');
+    dots.forEach(d => {
+      d.className = `cloud-status-dot ${status}`;
+    });
+
+    const statusTexts = document.querySelectorAll('#cloudStatusText, #cloudModalStatusText');
+    statusTexts.forEach(t => {
+      if (status === 'online') {
+        t.innerHTML = '🟢 <span style="color:#10b981; font-weight:700;">실시간 동기화 중</span>';
+      } else if (status === 'connecting') {
+        t.innerHTML = '🟡 <span style="color:#fbbf24; font-weight:700;">연결 시도 중...</span>';
+      } else if (status === 'error') {
+        t.innerHTML = '🔴 <span style="color:#f87171; font-weight:700;">동기화 오류</span>';
+      } else {
+        t.innerHTML = '⚪ <span style="color:var(--text-muted);">로컬 단독 모드</span>';
+      }
+    });
+
+    const btnDisconnect = document.getElementById('btnDisconnectCloud');
+    if (btnDisconnect) {
+      btnDisconnect.style.display = (status === 'online') ? 'inline-block' : 'none';
+    }
+  }
+};
+
 Storage.init();
+if (window.CloudSync) {
+  CloudSync.init();
+}

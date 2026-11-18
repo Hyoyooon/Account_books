@@ -1796,6 +1796,106 @@ document.addEventListener('DOMContentLoaded', () => {
     e.target.value = '';
   });
 
+  // ===================================================
+  // 부부 실시간 클라우드 동기화 (Firebase Firestore) 이벤트
+  // ===================================================
+  window.addEventListener('cloudStateSynced', e => {
+    renderAll();
+    const isInitial = e.detail && e.detail.initial;
+    showToast(isInitial ? '☁️ 클라우드 가계부 데이터가 로드되었습니다!' : '☁️ 최신 변경 내역이 실시간 동기화되었습니다!');
+  });
+
+  const cloudModal = document.getElementById('cloudSyncModal');
+  const openCloudModal = () => {
+    if (window.CloudSync && CloudSync.config) {
+      const familyInput = document.getElementById('inputFamilyCode');
+      if (familyInput) familyInput.value = CloudSync.config.familyCode || '';
+    }
+    if (window.CloudSync) {
+      CloudSync.updateStatusUI(
+        CloudSync.isConnected ? 'online' : (CloudSync.config ? 'connecting' : 'offline'),
+        CloudSync.isConnected ? '실시간 동기화 중' : '로컬 모드'
+      );
+    }
+    if (cloudModal) cloudModal.classList.add('active');
+  };
+
+  const closeCloudModal = () => {
+    if (cloudModal) cloudModal.classList.remove('active');
+  };
+
+  const btnCloudSync = document.getElementById('btnCloudSync');
+  if (btnCloudSync) btnCloudSync.addEventListener('click', openCloudModal);
+
+  const btnCloudSyncSide = document.getElementById('btnCloudSyncSide');
+  if (btnCloudSyncSide) btnCloudSyncSide.addEventListener('click', openCloudModal);
+
+  const btnCloseCloudModal = document.getElementById('btnCloseCloudModal');
+  if (btnCloseCloudModal) btnCloseCloudModal.addEventListener('click', closeCloudModal);
+
+  if (cloudModal) {
+    cloudModal.addEventListener('click', e => {
+      if (e.target === cloudModal) closeCloudModal();
+    });
+  }
+
+  const btnConnectCloud = document.getElementById('btnConnectCloud');
+  if (btnConnectCloud) {
+    btnConnectCloud.addEventListener('click', async () => {
+      const familyCode = document.getElementById('inputFamilyCode').value.trim();
+      const configText = document.getElementById('inputFirebaseConfigText').value.trim();
+
+      if (!familyCode || familyCode.length < 2) {
+        alert('부부 두 분이 함께 사용할 가족 방 코드(비밀번호)를 최소 2글자 이상 입력해 주세요.');
+        document.getElementById('inputFamilyCode').focus();
+        return;
+      }
+
+      if (!configText && (!window.CloudSync || !CloudSync.config)) {
+        alert('Firebase 콘솔에서 복사한 설정 코드를 붙여넣어 주세요.');
+        document.getElementById('inputFirebaseConfigText').focus();
+        return;
+      }
+
+      let parsedConfig = CloudSync.parseFirebaseConfigInput(configText);
+      if (!parsedConfig && window.CloudSync && CloudSync.config) {
+        parsedConfig = CloudSync.config;
+      }
+
+      if (!parsedConfig || !parsedConfig.apiKey || !parsedConfig.projectId) {
+        alert('Firebase 설정값을 올바르게 인식하지 못했습니다.\nFirebase 콘솔의 firebaseConfig 객체 코드를 복사해 그대로 붙여넣어 주세요.');
+        return;
+      }
+
+      btnConnectCloud.disabled = true;
+      btnConnectCloud.textContent = '⏳ 클라우드 연결 및 동기화 중...';
+
+      const res = await CloudSync.connect({ ...parsedConfig, familyCode }, true);
+
+      btnConnectCloud.disabled = false;
+      btnConnectCloud.textContent = '🚀 실시간 동기화 연결 시작';
+
+      if (res.success) {
+        renderAll();
+        closeCloudModal();
+        showToast('🎉 부부 실시간 클라우드 동기화가 성공적으로 연결되었습니다!');
+      } else {
+        alert(`클라우드 연결 실패:\n${res.error}\n\nFirebase 설정값과 인터넷 연결을 확인해 주세요.`);
+      }
+    });
+  }
+
+  const btnDisconnectCloud = document.getElementById('btnDisconnectCloud');
+  if (btnDisconnectCloud) {
+    btnDisconnectCloud.addEventListener('click', () => {
+      if (confirm('클라우드 동기화를 해제하고 로컬 단독 모드로 전환하시겠습니까?\n(현재 저장된 데이터는 기기에 안전하게 유지됩니다)')) {
+        CloudSync.clearConfig();
+        closeCloudModal();
+        showToast('⚪ 로컬 모드로 전환되었습니다.');
+      }
+    });
+  }
+
   initSelectors();
   initDragAndDropZones();
   renderAll();

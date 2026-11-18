@@ -1217,6 +1217,52 @@ tr[draggable="true"]:active {
   transform: translateY(0);
 }
 
+/* ===================================================
+   실시간 클라우드 동기화 상태 및 모달 스타일
+   =================================================== */
+.cloud-status-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  transition: all 0.25s ease;
+  vertical-align: middle;
+}
+
+.cloud-status-dot.online {
+  background-color: #10b981;
+  box-shadow: 0 0 8px rgba(16, 185, 129, 0.7);
+}
+
+.cloud-status-dot.connecting {
+  background-color: #fbbf24;
+  box-shadow: 0 0 6px rgba(251, 191, 36, 0.6);
+  animation: pulse-dot 1.2s infinite ease-in-out;
+}
+
+.cloud-status-dot.error {
+  background-color: #f87171;
+  box-shadow: 0 0 6px rgba(248, 113, 113, 0.6);
+}
+
+.cloud-status-dot.offline {
+  background-color: #71717a;
+}
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.35; transform: scale(0.8); }
+}
+
+.btn-sidebar-action.cloud:hover {
+  border-color: #38bdf8;
+  color: #38bdf8;
+}
+
+.btn-top:hover .cloud-status-dot.offline {
+  background-color: #a1a1aa;
+}
+
 @media (max-width: 860px) {
   .app-shell {
     flex-direction: column;
