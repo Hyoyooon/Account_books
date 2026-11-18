@@ -1857,23 +1857,50 @@ document.addEventListener('DOMContentLoaded', () => {
   // ===================================================
   // [초대 링크 복사] 핸들러 (연결된 내 화면에만 노출)
   // ===================================================
-  const copyInviteLinkAction = async () => {
-    if (!window.CloudSync) return;
-    const link = CloudSync.generateInviteLink();
+  const copyInviteLinkAction = async (e) => {
+    const syncObj = window.CloudSync || (typeof CloudSync !== 'undefined' ? CloudSync : null);
+    if (!syncObj) return;
+    const link = syncObj.generateInviteLink();
+
+    let copied = false;
     try {
-      if (navigator.clipboard && navigator.clipboard.writeText) {
+      if (navigator.clipboard && navigator.clipboard.writeText && window.isSecureContext) {
         await navigator.clipboard.writeText(link);
-      } else {
+        copied = true;
+      }
+    } catch (err) {
+      copied = false;
+    }
+
+    if (!copied) {
+      try {
         const ta = document.createElement('textarea');
         ta.value = link;
+        ta.style.position = 'fixed';
+        ta.style.left = '-9999px';
+        ta.style.top = '0';
         document.body.appendChild(ta);
+        ta.focus();
         ta.select();
-        document.execCommand('copy');
+        copied = document.execCommand('copy');
         document.body.removeChild(ta);
+      } catch (err2) {
+        copied = false;
       }
-      showToast('📋 초대 링크가 복사되었습니다! 카톡으로 친구에게 보내주세요.');
-    } catch (err) {
-      prompt('아래 초대 링크를 복사하여 카톡으로 친구에게 보내주세요:', link);
+    }
+
+    if (copied) {
+      showToast(`📋 초대 링크 복사 완료! (${link})`);
+      const targetBtn = e && e.currentTarget ? e.currentTarget : null;
+      if (targetBtn) {
+        const origHtml = targetBtn.innerHTML;
+        targetBtn.innerHTML = '<span>✅</span><span>링크 복사 완료!</span>';
+        setTimeout(() => {
+          targetBtn.innerHTML = origHtml;
+        }, 2000);
+      }
+    } else {
+      prompt('아래 초대 링크를 복사(Ctrl+C)하여 카톡으로 친구에게 보내주세요:', link);
     }
   };
 

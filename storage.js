@@ -70,7 +70,7 @@ function createInitialState() {
   };
 }
 
-const Storage = {
+const Storage = window.Storage = {
   state: null,
 
   init() {
@@ -899,7 +899,7 @@ const DEFAULT_FIREBASE_CONFIG = {
   measurementId: "G-SMW7HY55LE"
 };
 
-const CloudSync = {
+const CloudSync = window.CloudSync = {
   db: null,
   unsubscribe: null,
   config: null,
@@ -934,8 +934,12 @@ const CloudSync = {
   },
 
   generateInviteLink() {
-    const baseUrl = window.location.origin + window.location.pathname;
-    return `${baseUrl}?invite=true`;
+    if (window.location.protocol === 'file:' || !window.location.origin || window.location.origin === 'null') {
+      return 'https://hyoyoooon.github.io/Account_books/?invite=true';
+    }
+    const cleanPath = window.location.pathname.replace(/index\.html$/i, '');
+    const baseUrl = window.location.origin + cleanPath;
+    return `${baseUrl.replace(/\/?$/, '/')}?invite=true`;
   },
 
   checkInviteFromUrl() {
