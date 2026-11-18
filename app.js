@@ -1807,11 +1807,26 @@ document.addEventListener('DOMContentLoaded', () => {
 
   const cloudModal = document.getElementById('cloudSyncModal');
   const openCloudModal = () => {
-    if (window.CloudSync && CloudSync.config) {
-      const familyInput = document.getElementById('inputFamilyCode');
-      if (familyInput) familyInput.value = CloudSync.config.familyCode || '';
-    }
+    const familyInput = document.getElementById('inputFamilyCode');
+    const configInput = document.getElementById('inputFirebaseConfigText');
+
     if (window.CloudSync) {
+      if (CloudSync.config) {
+        if (familyInput) familyInput.value = CloudSync.config.familyCode || '';
+        if (configInput) {
+          configInput.value = JSON.stringify({
+            apiKey: CloudSync.config.apiKey,
+            projectId: CloudSync.config.projectId,
+            appId: CloudSync.config.appId
+          }, null, 2);
+        }
+      } else if (configInput && !configInput.value.trim()) {
+        const def = CloudSync.getDefaultConfig();
+        if (def && def.apiKey) {
+          configInput.value = JSON.stringify(def, null, 2);
+        }
+      }
+
       CloudSync.updateStatusUI(
         CloudSync.isConnected ? 'online' : (CloudSync.config ? 'connecting' : 'offline'),
         CloudSync.isConnected ? '실시간 동기화 중' : '로컬 모드'
@@ -1837,6 +1852,48 @@ document.addEventListener('DOMContentLoaded', () => {
     cloudModal.addEventListener('click', e => {
       if (e.target === cloudModal) closeCloudModal();
     });
+  }
+
+  // ===================================================
+  // [초대 링크 복사] 핸들러 (연결된 내 화면에만 노출)
+  // ===================================================
+  const copyInviteLinkAction = async () => {
+    if (!window.CloudSync) return;
+    const link = CloudSync.generateInviteLink();
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(link);
+      } else {
+        const ta = document.createElement('textarea');
+        ta.value = link;
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+      }
+      showToast('📋 초대 링크가 복사되었습니다! 카톡으로 친구에게 보내주세요.');
+    } catch (err) {
+      prompt('아래 초대 링크를 복사하여 카톡으로 친구에게 보내주세요:', link);
+    }
+  };
+
+  const btnCopyInviteTop = document.getElementById('btnCopyInviteTop');
+  if (btnCopyInviteTop) btnCopyInviteTop.addEventListener('click', copyInviteLinkAction);
+
+  const btnCopyInviteLink = document.getElementById('btnCopyInviteLink');
+  if (btnCopyInviteLink) btnCopyInviteLink.addEventListener('click', copyInviteLinkAction);
+
+  // 친구 초대 링크 타고 접속 시 자동 안내 및 팝업 오픈
+  if (window.CloudSync && CloudSync.checkInviteFromUrl()) {
+    setTimeout(() => {
+      openCloudModal();
+      const familyInput = document.getElementById('inputFamilyCode');
+      if (familyInput) {
+        familyInput.value = '';
+        familyInput.focus();
+      }
+      showToast('💌 친구 초대 링크로 접속했습니다! 부부 비밀번호를 정해서 입력하세요.');
+    }, 450);
   }
 
   const btnConnectCloud = document.getElementById('btnConnectCloud');

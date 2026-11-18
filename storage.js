@@ -887,9 +887,18 @@ const Storage = {
 
 // ===================================================
 // CloudSync: Firebase Firestore 기반 부부 실시간 클라우드 동기화 모듈
-// - 깃허브 코드에는 개인 키/비밀번호가 전혀 남지 않음 (브라우저 localStorage에만 저장)
 // - 가족 방 코드(SHA-256 해시)로 고유 문서 식별
 // ===================================================
+const DEFAULT_FIREBASE_CONFIG = {
+  apiKey: "AIzaSyDopMe3hohnYvnLhjJYgwvlAfmec3d9SOg",
+  authDomain: "account-books-2d281.firebaseapp.com",
+  projectId: "account-books-2d281",
+  storageBucket: "account-books-2d281.firebasestorage.app",
+  messagingSenderId: "912057947856",
+  appId: "1:912057947856:web:6f37927bbb2dfbab0cb0d5",
+  measurementId: "G-SMW7HY55LE"
+};
+
 const CloudSync = {
   db: null,
   unsubscribe: null,
@@ -918,6 +927,29 @@ const CloudSync = {
       this.config = null;
     }
     return this.config;
+  },
+
+  getDefaultConfig() {
+    return { ...DEFAULT_FIREBASE_CONFIG };
+  },
+
+  generateInviteLink() {
+    const baseUrl = window.location.origin + window.location.pathname;
+    return `${baseUrl}?invite=true`;
+  },
+
+  checkInviteFromUrl() {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const hash = window.location.hash || '';
+      if (params.get('invite') === 'true' || hash.includes('invite')) {
+        if (window.history && history.replaceState) {
+          history.replaceState(null, '', window.location.pathname);
+        }
+        return true;
+      }
+    } catch (e) {}
+    return false;
   },
 
   saveConfig(cfg) {
@@ -1151,6 +1183,17 @@ const CloudSync = {
     const btnDisconnect = document.getElementById('btnDisconnectCloud');
     if (btnDisconnect) {
       btnDisconnect.style.display = (status === 'online') ? 'inline-block' : 'none';
+    }
+
+    // [내 화면에만 노출] 실시간 클라우드 연결 상태일 때만 '초대 링크 복사' 버튼 표시
+    const btnInviteTop = document.getElementById('btnCopyInviteTop');
+    if (btnInviteTop) {
+      btnInviteTop.style.display = (status === 'online') ? 'inline-flex' : 'none';
+    }
+
+    const inviteCard = document.getElementById('inviteShareCard');
+    if (inviteCard) {
+      inviteCard.style.display = (status === 'online') ? 'block' : 'none';
     }
   }
 };
