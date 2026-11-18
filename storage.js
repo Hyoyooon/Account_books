@@ -887,18 +887,9 @@ const Storage = window.Storage = {
 
 // ===================================================
 // CloudSync: Firebase Firestore 기반 부부 실시간 클라우드 동기화 모듈
-// - 가족 방 코드(SHA-256 해시)로 고유 문서 식별
+// - GitHub 공개 코드에는 Firebase 설정값(apiKey 등)이 단 한 글자도 포함되지 않음
+// - 화면(UI)에도 설정값을 미리 노출하지 않고 '부부 가족 방 코드'만으로 연결
 // ===================================================
-const DEFAULT_FIREBASE_CONFIG = {
-  apiKey: "AIzaSyDopMe3hohnYvnLhjJYgwvlAfmec3d9SOg",
-  authDomain: "account-books-2d281.firebaseapp.com",
-  projectId: "account-books-2d281",
-  storageBucket: "account-books-2d281.firebasestorage.app",
-  messagingSenderId: "912057947856",
-  appId: "1:912057947856:web:6f37927bbb2dfbab0cb0d5",
-  measurementId: "G-SMW7HY55LE"
-};
-
 const CloudSync = window.CloudSync = {
   db: null,
   unsubscribe: null,
@@ -909,8 +900,10 @@ const CloudSync = window.CloudSync = {
   lastSyncedAt: null,
 
   CONFIG_KEY: 'sweet_ledger_cloud_config_v1',
+  ENDPOINT_KEY: 'sweet_ledger_cloud_endpoint_v1',
 
   async init() {
+    this.checkInviteFromUrl();
     this.loadConfig();
     if (this.config && this.config.apiKey && this.config.projectId && this.config.familyCode) {
       await this.connect(this.config, false);
@@ -929,27 +922,101 @@ const CloudSync = window.CloudSync = {
     return this.config;
   },
 
-  getDefaultConfig() {
-    return { ...DEFAULT_FIREBASE_CONFIG };
+  /**
+   * 화면에 노출하지 않고 내부에 저장된 서버 연결 엔드포인트 조회
+   * (1순위: 기존 연결 설정 / 2순위: 초대 링크로 전달받은 엔드포인트 / 3순위: 로컬 전용 private_seed.js)
+   */
+  getHiddenEndpointConfig() {
+    if (this.config && this.config.apiKey && this.config.projectId) {
+      return {
+        apiKey: this.config.apiKey,
+        authDomain: this.config.authDomain,
+        projectId: this.config.projectId,
+        storageBucket: this.config.storageBucket,
+        messagingSenderId: this.config.messagingSenderId,
+        appId: this.config.appId
+      };
+    }
+    try {
+      const savedEp = localStorage.getItem(this.ENDPOINT_KEY);
+      if (savedEp) {
+        const parsed = JSON.parse(savedEp);
+        if (parsed && parsed.apiKey && parsed.projectId) return parsed;
+      }
+    } catch (e) {}
+
+    if (window.PRIVATE_FIREBASE_CONFIG && window.PRIVATE_FIREBASE_CONFIG.apiKey) {
+      return { ...window.PRIVATE_FIREBASE_CONFIG };
+    }
+    return null;
+  },
+
+  saveEndpointConfig(ep) {
+    if (!ep || !ep.apiKey || !ep.projectId) return;
+    const cleanEp = {
+      apiKey: ep.apiKey,
+      authDomain: ep.authDomain || `${ep.projectId}.firebaseapp.com`,
+      projectId: ep.projectId,
+      storageBucket: ep.storageBucket || `${ep.projectId}.firebasestorage.app`,
+      messagingSenderId: ep.messagingSenderId || '',
+      appId: ep.appId || ''
+    };
+    localStorage.setItem(this.ENDPOINT_KEY, JSON.stringify(cleanEp));
   },
 
   generateInviteLink() {
-    if (window.location.protocol === 'file:' || !window.location.origin || window.location.origin === 'null') {
-      return 'https://hyoyoooon.github.io/Account_books/?invite=true';
+    let baseUrl = 'https://hyoyoooon.github.io/Account_books/';
+    if (window.location.protocol !== 'file:' && window.location.origin && window.location.origin !== 'null') {
+      const cleanPath = window.location.pathname.replace(/index\.html$/i, '');
+      baseUrl = (window.location.origin + cleanPath).replace(/\/?$/, '/');
     }
-    const cleanPath = window.location.pathname.replace(/index\.html$/i, '');
-    const baseUrl = window.location.origin + cleanPath;
-    return `${baseUrl.replace(/\/?$/, '/')}?invite=true`;
+
+    const ep = this.getHiddenEndpointConfig();
+    if (ep && ep.apiKey && ep.projectId) {
+      const minPayload = JSON.stringify({
+        k: ep.apiKey,
+        p: ep.projectId,
+        a: ep.appId || '',
+        m: ep.messagingSenderId || ''
+      });
+      const token = btoa(encodeURIComponent(minPayload));
+      return `${baseUrl}#invite=${token}`;
+    }
+    return `${baseUrl}?invite=true`;
   },
 
   checkInviteFromUrl() {
     try {
-      const params = new URLSearchParams(window.location.search);
       const hash = window.location.hash || '';
-      if (params.get('invite') === 'true' || hash.includes('invite')) {
+      const params = new URLSearchParams(window.location.search);
+
+      if (hash.startsWith('#invite=')) {
+        const token = hash.replace('#invite=', '').trim();
+        if (token) {
+          const decoded = JSON.parse(decodeURIComponent(atob(token)));
+          if (decoded && decoded.k && decoded.p) {
+            this.saveEndpointConfig({
+              apiKey: decoded.k,
+              projectId: decoded.p,
+              authDomain: `${decoded.p}.firebaseapp.com`,
+              storageBucket: `${decoded.p}.firebasestorage.app`,
+              messagingSenderId: decoded.m || '',
+              appId: decoded.a || ''
+            });
+          }
+        }
         if (window.history && history.replaceState) {
           history.replaceState(null, '', window.location.pathname);
         }
+        this._invitedJustNow = true;
+        return true;
+      }
+
+      if (params.get('invite') === 'true') {
+        if (window.history && history.replaceState) {
+          history.replaceState(null, '', window.location.pathname);
+        }
+        this._invitedJustNow = true;
         return true;
       }
     } catch (e) {}
@@ -959,6 +1026,7 @@ const CloudSync = window.CloudSync = {
   saveConfig(cfg) {
     this.config = cfg;
     localStorage.setItem(this.CONFIG_KEY, JSON.stringify(cfg));
+    this.saveEndpointConfig(cfg);
   },
 
   clearConfig() {

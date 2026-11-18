@@ -1806,30 +1806,46 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   const cloudModal = document.getElementById('cloudSyncModal');
+  const adminConfigBox = document.getElementById('adminConfigBox');
+  const btnToggleAdminConfig = document.getElementById('btnToggleAdminConfig');
+  const endpointReadyBadge = document.getElementById('endpointReadyBadge');
+
+  if (btnToggleAdminConfig && adminConfigBox) {
+    btnToggleAdminConfig.addEventListener('click', () => {
+      const isHidden = adminConfigBox.style.display === 'none';
+      adminConfigBox.style.display = isHidden ? 'block' : 'none';
+    });
+  }
+
   const openCloudModal = () => {
     const familyInput = document.getElementById('inputFamilyCode');
     const configInput = document.getElementById('inputFirebaseConfigText');
+    const syncObj = window.CloudSync || (typeof CloudSync !== 'undefined' ? CloudSync : null);
 
-    if (window.CloudSync) {
-      if (CloudSync.config) {
-        if (familyInput) familyInput.value = CloudSync.config.familyCode || '';
-        if (configInput) {
-          configInput.value = JSON.stringify({
-            apiKey: CloudSync.config.apiKey,
-            projectId: CloudSync.config.projectId,
-            appId: CloudSync.config.appId
-          }, null, 2);
-        }
-      } else if (configInput && !configInput.value.trim()) {
-        const def = CloudSync.getDefaultConfig();
-        if (def && def.apiKey) {
-          configInput.value = JSON.stringify(def, null, 2);
-        }
+    // 보안을 위해 화면의 텍스트박스에는 Firebase 설정값을 절대 미리 채워서 노출하지 않음!
+    if (configInput) {
+      configInput.value = '';
+    }
+
+    if (syncObj) {
+      if (familyInput) {
+        familyInput.value = (syncObj.config && syncObj.config.familyCode) ? syncObj.config.familyCode : '';
       }
 
-      CloudSync.updateStatusUI(
-        CloudSync.isConnected ? 'online' : (CloudSync.config ? 'connecting' : 'offline'),
-        CloudSync.isConnected ? '실시간 동기화 중' : '로컬 모드'
+      const hasHiddenEndpoint = Boolean(syncObj.getHiddenEndpointConfig());
+      if (endpointReadyBadge) {
+        endpointReadyBadge.textContent = hasHiddenEndpoint
+          ? '🔒 보안 클라우드 준비됨 (가족 방 코드만 입력하세요)'
+          : '⚠️ 최초 1회 서버 키 등록 또는 초대 링크 접속 필요';
+        endpointReadyBadge.style.color = hasHiddenEndpoint ? '#10b981' : '#fbbf24';
+      }
+      if (adminConfigBox) {
+        adminConfigBox.style.display = hasHiddenEndpoint ? 'none' : 'block';
+      }
+
+      syncObj.updateStatusUI(
+        syncObj.isConnected ? 'online' : (syncObj.config ? 'connecting' : 'offline'),
+        syncObj.isConnected ? '실시간 동기화 중' : '로컬 모드'
       );
     }
     if (cloudModal) cloudModal.classList.add('active');
@@ -1911,7 +1927,9 @@ document.addEventListener('DOMContentLoaded', () => {
   if (btnCopyInviteLink) btnCopyInviteLink.addEventListener('click', copyInviteLinkAction);
 
   // 친구 초대 링크 타고 접속 시 자동 안내 및 팝업 오픈
-  if (window.CloudSync && CloudSync.checkInviteFromUrl()) {
+  const syncInitObj = window.CloudSync || (typeof CloudSync !== 'undefined' ? CloudSync : null);
+  if (syncInitObj && (syncInitObj._invitedJustNow || syncInitObj.checkInviteFromUrl())) {
+    syncInitObj._invitedJustNow = false;
     setTimeout(() => {
       openCloudModal();
       const familyInput = document.getElementById('inputFamilyCode');
@@ -1919,15 +1937,19 @@ document.addEventListener('DOMContentLoaded', () => {
         familyInput.value = '';
         familyInput.focus();
       }
-      showToast('💌 친구 초대 링크로 접속했습니다! 부부 비밀번호를 정해서 입력하세요.');
+      showToast('💌 초대 링크로 접속했습니다! 부부 가족 방 코드를 입력하면 바로 공유됩니다.');
     }, 450);
   }
 
   const btnConnectCloud = document.getElementById('btnConnectCloud');
   if (btnConnectCloud) {
     btnConnectCloud.addEventListener('click', async () => {
+      const syncObj = window.CloudSync || (typeof CloudSync !== 'undefined' ? CloudSync : null);
+      if (!syncObj) return;
+
       const familyCode = document.getElementById('inputFamilyCode').value.trim();
-      const configText = document.getElementById('inputFirebaseConfigText').value.trim();
+      const configInput = document.getElementById('inputFirebaseConfigText');
+      const configText = configInput ? configInput.value.trim() : '';
 
       if (!familyCode || familyCode.length < 2) {
         alert('부부 두 분이 함께 사용할 가족 방 코드(비밀번호)를 최소 2글자 이상 입력해 주세요.');
@@ -1935,36 +1957,40 @@ document.addEventListener('DOMContentLoaded', () => {
         return;
       }
 
-      if (!configText && (!window.CloudSync || !CloudSync.config)) {
-        alert('Firebase 콘솔에서 복사한 설정 코드를 붙여넣어 주세요.');
-        document.getElementById('inputFirebaseConfigText').focus();
-        return;
-      }
-
-      let parsedConfig = CloudSync.parseFirebaseConfigInput(configText);
-      if (!parsedConfig && window.CloudSync && CloudSync.config) {
-        parsedConfig = CloudSync.config;
+      let parsedConfig = null;
+      if (configText) {
+        parsedConfig = syncObj.parseFirebaseConfigInput(configText);
+        if (!parsedConfig) {
+          alert('Firebase 설정값을 올바르게 인식하지 못했습니다.\nFirebase 콘솔의 firebaseConfig 객체 코드를 복사해 그대로 붙여넣어 주세요.');
+          return;
+        }
+        // 보안을 위해 입력창에 남아있는 텍스트는 즉시 지움
+        if (configInput) configInput.value = '';
+      } else {
+        parsedConfig = syncObj.getHiddenEndpointConfig();
       }
 
       if (!parsedConfig || !parsedConfig.apiKey || !parsedConfig.projectId) {
-        alert('Firebase 설정값을 올바르게 인식하지 못했습니다.\nFirebase 콘솔의 firebaseConfig 객체 코드를 복사해 그대로 붙여넣어 주세요.');
+        if (adminConfigBox) adminConfigBox.style.display = 'block';
+        alert('최초 1회 서버 연결 키 등록이 필요합니다.\n초대 링크로 접속하거나 아래 [서버 키 재설정] 칸에 Firebase 설정 코드를 한 번만 붙여넣어 주세요.');
+        if (configInput) configInput.focus();
         return;
       }
 
       btnConnectCloud.disabled = true;
       btnConnectCloud.textContent = '⏳ 클라우드 연결 및 동기화 중...';
 
-      const res = await CloudSync.connect({ ...parsedConfig, familyCode }, true);
+      const res = await syncObj.connect({ ...parsedConfig, familyCode }, true);
 
       btnConnectCloud.disabled = false;
-      btnConnectCloud.textContent = '🚀 실시간 동기화 연결 시작';
+      btnConnectCloud.textContent = '🚀 가족 방 코드로 실시간 연결 시작';
 
       if (res.success) {
         renderAll();
         closeCloudModal();
-        showToast('🎉 부부 실시간 클라우드 동기화가 성공적으로 연결되었습니다!');
+        showToast('🎉 부부 실시간 클라우드 동기화가 연결되었습니다!');
       } else {
-        alert(`클라우드 연결 실패:\n${res.error}\n\nFirebase 설정값과 인터넷 연결을 확인해 주세요.`);
+        alert(`클라우드 연결 실패:\n${res.error}\n\n인터넷 연결을 확인해 주세요.`);
       }
     });
   }

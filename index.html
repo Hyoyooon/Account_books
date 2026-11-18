@@ -1016,32 +1016,37 @@
         </button>
       </div>
 
-      <!-- 입력 폼 -->
+      <!-- 입력 폼 (화면에는 오직 부부 가족 방 코드만 깔끔하게 표시, Firebase 설정값은 노출하지 않음) -->
       <div id="cloudSetupForm">
-        <div class="form-group" style="margin-bottom:14px;">
+        <div class="form-group" style="margin-bottom:16px;">
           <label class="form-label" style="display:flex; justify-content:space-between; margin-bottom:6px;">
-            <span style="font-weight:700; font-size:0.86rem;">1. 우리 부부 가족 방 코드 (비밀번호)</span>
+            <span style="font-weight:700; font-size:0.88rem;">🔑 우리 부부 가족 방 코드 (비밀번호)</span>
             <span style="font-size:0.75rem; color:var(--accent-orange-light);">*남편과 똑같이 입력</span>
           </label>
-          <input type="text" id="inputFamilyCode" class="form-control" placeholder="예: sweet-home-777 (원하는 비밀 코드 입력)" style="font-family:var(--font-mono);">
-          <span style="font-size:0.75rem; color:var(--text-muted); margin-top:4px; display:block;">
-            💡 부부 두 분이 똑같은 방 코드를 입력해야 같은 가계부로 실시간 연결됩니다.
+          <input type="password" id="inputFamilyCode" class="input-dark" placeholder="부부 둘만 아는 가족 방 코드를 입력하세요" autocomplete="off" style="font-family:var(--font-mono); font-size:0.92rem; padding:11px 12px;">
+          <span style="font-size:0.75rem; color:var(--text-muted); margin-top:6px; display:block;">
+            💡 동일한 가족 방 코드를 입력한 부부 기기끼리만 같은 가계부 화면을 실시간으로 공유합니다.
           </span>
         </div>
 
-        <div class="form-group" style="margin-bottom:18px;">
-          <label class="form-label" style="display:flex; justify-content:space-between; margin-bottom:6px;">
-            <span style="font-weight:700; font-size:0.86rem;">2. Firebase 설정값 붙여넣기</span>
-            <span style="font-size:0.75rem; color:#10b981;">초간단 원클릭 인식 ✨</span>
-          </label>
-          <textarea id="inputFirebaseConfigText" class="form-control" rows="4" placeholder="Firebase 콘솔에서 복사한 firebaseConfig = { ... } 코드 전체를 그대로 여기에 붙여넣으세요." style="font-family:var(--font-mono); font-size:0.78rem; resize:vertical; line-height:1.4;"></textarea>
-          <span style="font-size:0.75rem; color:var(--text-muted); margin-top:4px; display:block;">
-            📌 Firebase 웹 앱 구성 코드를 복사해서 붙여넣기만 하면 자동으로 분석하여 안전하게 연결합니다.
-          </span>
+        <!-- 관리자용 초기 서버 키 등록 (평소에는 완전히 숨김 & 저장된 키를 화면에 절대 노출하지 않음) -->
+        <div style="margin-bottom:16px;">
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <span id="endpointReadyBadge" style="font-size:0.76rem; color:#10b981; font-weight:700;">🔒 보안 클라우드 서버 연결 준비됨</span>
+            <button type="button" id="btnToggleAdminConfig" style="background:none; border:none; color:var(--text-muted); font-size:0.74rem; cursor:pointer; text-decoration:underline;">
+              ⚙️ 서버 키 재설정 (관리자용)
+            </button>
+          </div>
+          <div id="adminConfigBox" style="display:none; margin-top:10px; padding:12px; background:var(--bg-input); border:1px solid var(--border-subtle); border-radius:var(--radius-sm);">
+            <label class="form-label" style="display:block; font-weight:700; font-size:0.8rem; margin-bottom:6px; color:var(--text-secondary);">
+              Firebase 설정 코드 등록 (보안을 위해 저장된 값은 화면에 표시되지 않습니다)
+            </label>
+            <textarea id="inputFirebaseConfigText" class="input-dark" rows="3" placeholder="새로운 Firebase 설정을 등록할 때만 firebaseConfig 코드를 붙여넣으세요." style="font-family:var(--font-mono); font-size:0.76rem; resize:vertical; line-height:1.4;"></textarea>
+          </div>
         </div>
 
         <button type="button" id="btnConnectCloud" class="btn-primary-orange" style="width:100%; justify-content:center; padding:12px; font-weight:800; font-size:0.95rem; cursor:pointer;">
-          🚀 실시간 동기화 연결 시작
+          🚀 가족 방 코드로 실시간 연결 시작
         </button>
       </div>
     </div>
